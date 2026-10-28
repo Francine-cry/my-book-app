@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>图书借阅系统</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen py-8 px-4 font-sans text-gray-800">
+  <div class="max-w-6xl mx-auto">
+    
+    <!-- 顶部标题与数据看板 -->
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+      <h1 class="text-3xl font-extrabold flex items-center gap-2">📚 图书借阅系统</h1>
+      <div class="flex gap-4 bg-white px-6 py-3 rounded-xl shadow-sm border border-gray-200">
+        <div class="text-center">
+          <div class="text-xs text-gray-500">总藏书</div>
+          <div id="statTotal" class="text-xl font-bold text-blue-600">-</div>
+        </div>
+        <div class="w-px bg-gray-200"></div>
+        <div class="text-center">
+          <div class="text-xs text-gray-500">在馆</div>
+          <div id="statIn" class="text-xl font-bold text-green-600">-</div>
+        </div>
+        <div class="w-px bg-gray-200"></div>
+        <div class="text-center">
+          <div class="text-xs text-gray-500">已借出</div>
+          <div id="statOut" class="text-xl font-bold text-red-600">-</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 工具栏：搜索与分类 -->
+    <div class="bg-white rounded-xl shadow-sm p-4 mb-6 flex flex-wrap gap-4 items-center justify-between">
+      <div class="flex gap-2 flex-1 min-w-[300px]">
+        <input id="searchInput" type="text" placeholder="搜索书名或作者..." class="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none">
+        <button onclick="resetAndFetch()" class="bg-gray-800 hover:bg-gray-900 text-white px-5 py-2 rounded-lg font-medium transition-colors">搜索</button>
+      </div>
+      <div class="flex items-center gap-2">
+        <label class="text-sm text-gray-600">分类：</label>
+        <select id="categoryFilter" onchange="resetAndFetch()" class="border border-gray-300 rounded-lg px-4 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="全部">全部</option>
+          <option value="文学">文学</option>
+          <option value="科技">科技</option>
+          <option value="历史">历史</option>
+          <option value="商业">商业</option>
+          <option value="其他">其他</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- 添加区域 -->
+    <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
+      <h2 class="text-lg font-bold text-gray-700 mb-4">新书入库</h2>
+      <div class="flex flex-wrap gap-4">
+        <input id="bookName" type="text" placeholder="书名（必填）" class="flex-1 min-w-[200px] border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none">
+        <input id="bookAuthor" type="text" placeholder="作者" class="flex-1 min-w-[150px] border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none">
+        <select id="bookCategory" class="border border-gray-300 rounded-lg px-4 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="文学">文学</option>
+          <option value="科技">科技</option>
+          <option value="历史">历史</option>
+          <option value="商业">商业</option>
+          <option value="其他">其他</option>
+        </select>
+        <button id="addBtn" onclick="addBook()" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2 rounded-lg font-medium transition-colors disabled:opacity-50">添加</button>
+      </div>
+    </div>
+
+    <!-- 列表区域 -->
+    <div class="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="bg-gray-50 text-gray-600 text-sm border-b">
+              <th class="p-4 font-medium">书籍信息</th>
+              <th class="p-4 font-medium">分类</th>
+              <th class="p-4 font-medium">状态</th>
+              <th class="p-4 font-medium">借阅人</th>
+              <th class="p-4 font-medium">时间记录</th>
+              <th class="p-4 font-medium text-right">操作</th>
+            </tr>
+          </thead>
+          <tbody id="list"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 分页控制 -->
+    <div class="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm">
+      <span id="pageInfo" class="text-sm text-gray-500">正在加载...</span>
+      <div class="flex gap-2">
+        <button id="prevBtn" onclick="changePage(-1)" class="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">上一页</button>
+        <button id="nextBtn" onclick="changePage(1)" class="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">下一页</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentPage = 1;
+    const pageLimit = 5;
+    let totalPages = 1;
+
+    function formatTime(timeStr) {
+      if (!timeStr) return '-';
+      const d = new Date(timeStr);
+      return `${d.getMonth()+1}月${d.getDate()}日 ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    }
+
+    async function fetchBooks() {
+      try {
+        const search = document.getElementById('searchInput').value.trim();
+        const category = document.getElementById('categoryFilter').value;
+        
+        const url = `/api/books?search=${encodeURIComponent(search)}&category=${category}&page=${currentPage}&limit=${pageLimit}`;
+        const res = await fetch(url);
+        const result = await res.json();
+
+        // 更新看板
+        document.getElementById('statTotal').innerText = result.stats.total;
+        document.getElementById('statIn').innerText = result.stats.in;
+        document.getElementById('statOut').innerText = result.stats.out;
+
+        // 更新分页
+        totalPages = Math.ceil(result.totalFiltered / pageLimit) || 1;
+        document.getElementById('pageInfo').innerText = `共 ${result.totalFiltered} 条记录，第 ${currentPage} / ${totalPages} 页`;
+        document.getElementById('prevBtn').disabled = currentPage === 1;
+        document.getElementById('nextBtn').disabled = currentPage === totalPages;
+
+        const listEl = document.getElementById('list');
+        if (result.data.length === 0) {
+          listEl.innerHTML = '<tr><td colspan="6" class="text-center py-10 text-gray-400">没有找到相关图书</td></tr>';
+          return;
+        }
+
+        listEl.innerHTML = result.data.map(b => {
+          const isBorrowed = b.status === '借出';
+          const statusColor = isBorrowed ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700';
+          const btnText = isBorrowed ? '归还' : '借出';
+          const btnColor = isBorrowed ? 'bg-green-500 hover:bg-green-600' : 'bg-orange-500 hover:bg-orange-600';
+          
+          let timeRecord = `<div class="text-gray-400">入库: ${formatTime(b.created_at)}</div>`;
+          if (isBorrowed) {
+            const isOverdue = b.due_time && new Date() > new Date(b.due_time);
+            timeRecord += `<div class="${isOverdue ? 'text-red-600 font-bold' : 'text-orange-500'}">借出: ${formatTime(b.borrow_time)} ${isOverdue ? '⚠️已逾期' : ''}</div>`;
+            timeRecord += `<div class="text-xs text-gray-400">应还: ${formatTime(b.due_time)}</div>`;
+          } else if (b.return_time) {
+            timeRecord += `<div class="text-xs text-gray-400">上次借阅: ${formatTime(b.borrow_time)}</div>`;
+            timeRecord += `<div class="text-xs text-green-500">归还于: ${formatTime(b.return_time)}</div>`;
+          }
+
+          return `
+          <tr class="border-b hover:bg-gray-50 transition-colors">
+            <td class="p-4">
+              <div class="font-bold text-gray-800">${b.name}</div>
+              <div class="text-xs text-gray-500 mt-1">作者: ${b.author}</div>
+            </td>
+            <td class="p-4 text-sm text-gray-600"><span class="bg-gray-100 px-2 py-1 rounded">${b.category || '其他'}</span></td>
+            <td class="p-4"><span class="text-xs px-2 py-1 rounded-full font-medium ${statusColor}">${b.status}</span></td>
+            <td class="p-4 text-sm text-gray-700 font-medium">${b.borrower || '-'}</td>
+            <td class="p-4 text-xs space-y-1">${timeRecord}</td>
+            <td class="p-4 text-right space-x-2 whitespace-nowrap">
+              <button onclick="toggleStatus(${b.id}, '${b.status}')" class="text-white text-xs px-3 py-1.5 rounded-md ${btnColor}">${btnText}</button>
+              <button onclick="deleteBook(${b.id})" class="text-red-500 bg-red-50 px-3 py-1.5 rounded-md text-xs">删除</button>
+            </td>
+          </tr>`;
+        }).join('');
+      } catch (error) {
+        console.error("前端加载失败:", error);
+        document.getElementById('list').innerHTML = `<tr><td colspan="6" class="text-center py-10 text-red-500">加载失败，请检查 F12 控制台</td></tr>`;
+      }
+    }
+
+    async function addBook() {
+      const name = document.getElementById('bookName').value.trim();
+      const author = document.getElementById('bookAuthor').value.trim();
+      const category = document.getElementById('bookCategory').value;
+      const btn = document.getElementById('addBtn');
+      
+      if(!name) return alert("书名不能为空！");
+      
+      btn.disabled = true;
+      btn.innerText = "入库中...";
+
+      try {
+        await fetch('/api/books', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, author, category })
+        });
+        document.getElementById('bookName').value = '';
+        document.getElementById('bookAuthor').value = '';
+        resetAndFetch();
+      } finally {
+        btn.disabled = false;
+        btn.innerText = "添加";
+      }
+    }
+
+    async function toggleStatus(id, currentStatus) {
+      const isBorrowing = currentStatus === '在馆';
+      let newStatus = isBorrowing ? '借出' : '在馆';
+      let borrower = null;
+
+      if (isBorrowing) {
+        borrower = prompt("请输入借阅人姓名：");
+        if (!borrower || borrower.trim() === '') return;
+      } else {
+        if(!confirm("确认归还这本书吗？")) return;
+      }
+
+      await fetch(`/api/books/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus, borrower: borrower?.trim() })
+      });
+      fetchBooks();
+    }
+
+    async function deleteBook(id) {
+      if(!confirm("⚠️ 确定要永久删除这本书吗？")) return;
+      await fetch(`/api/books/${id}`, { method: 'DELETE' });
+      fetchBooks();
+    }
+
+    function changePage(delta) {
+      const newPage = currentPage + delta;
+      if (newPage >= 1 && newPage <= totalPages) {
+        currentPage = newPage;
+        fetchBooks();
+      }
+    }
+
+    function resetAndFetch() {
+      currentPage = 1;
+      fetchBooks();
+    }
+
+    document.getElementById('searchInput').addEventListener('keypress', e => { if (e.key === 'Enter') resetAndFetch(); });
+    document.getElementById('bookAuthor').addEventListener('keypress', e => { if (e.key === 'Enter') addBook(); });
+
+    fetchBooks();
+  </script>
+</body>
+</html>
